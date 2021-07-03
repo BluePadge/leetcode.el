@@ -162,8 +162,8 @@ The elements of :problems has attributes:
 
 ;;; Login
 ;; URL
-(defconst leetcode--domain    "leetcode.com")
-(defconst leetcode--base-url  "https://leetcode.com")
+(defvar leetcode--domain    "leetcode.com")
+(defvar leetcode--base-url  "https://leetcode.com")
 (defconst leetcode--url-login (concat leetcode--base-url "/accounts/login"))
 
 ;; Header
@@ -254,27 +254,30 @@ VALUE should be the referer."
     ("filename"     . "")
     ("content-type" . "")))
 
+(defvar leetcode-session "")
+(defvar leetcode-session "")
 (aio-defun leetcode--login ()
   "Steal LeetCode login session from local browser.
 It also cleans LeetCode cookies in `url-cookie-file'."
   (leetcode--loading-mode t)
   (ignore-errors (url-cookie-delete-cookies leetcode--domain))
   (aio-await (leetcode--csrf-token))    ;knock knock, whisper me the mysterious information
-  (let* ((my-cookies (executable-find "my_cookies"))
-         (my-cookies-output (shell-command-to-string my-cookies))
-         (cookies-list (seq-filter
-                        (lambda (s) (not (string-empty-p s)))
-                        (split-string my-cookies-output "\n")))
-         (cookies-pairs (seq-map
-                         (lambda (s) (split-string s))
-                         cookies-list))
-         (leetcode-session (cadr (assoc "LEETCODE_SESSION" cookies-pairs)))
-         (leetcode-csrftoken (cadr (assoc "csrftoken" cookies-pairs))))
+;;  (let* ((my-cookies (executable-find "my_cookies"))
+;;         (my-cookies-output (shell-command-to-string my-cookies))
+;;         (cookies-list (seq-filter
+;;                        (lambda (s) (not (string-empty-p s)))
+;;                        (split-string my-cookies-output "\n")))
+;;         (cookies-pairs (seq-map
+;;                         (lambda (s) (split-string s))
+;;                         cookies-list))
+;;         (leetcode-session (cadr (assoc "LEETCODE_SESSION" cookies-pairs)))
+;;         (leetcode-csrftoken (cadr (assoc "csrftoken" cookies-pairs))))
     (leetcode--debug "login session: %s" leetcode-session)
     (leetcode--debug "login csrftoken: %s" leetcode-csrftoken)
     (url-cookie-store "LEETCODE_SESSION" leetcode-session nil leetcode--domain "/" t)
     (url-cookie-store "csrftoken" leetcode-csrftoken nil leetcode--domain "/" t))
-  (leetcode--loading-mode -1))
+(leetcode--loading-mode -1)
+;;)
 
 (defun leetcode--login-p ()
   "Whether user is login."
@@ -471,7 +474,8 @@ Return a list of rows, each row is a vector:
                      'font-lock-face 'leetcode-checkmark-face leetcode--checkmark))
                 " ")
               ;; id
-              (number-to-string (plist-get p :id))
+              ;;(number-to-string (plist-get p :id))
+              (plist-get p :id)
               ;; title
               (concat
                (plist-get p :title)
