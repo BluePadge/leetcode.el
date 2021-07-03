@@ -255,29 +255,29 @@ VALUE should be the referer."
     ("content-type" . "")))
 
 (defvar leetcode-session "")
-(defvar leetcode-session "")
+(defvar leetcode-csrftoken "")
 (aio-defun leetcode--login ()
   "Steal LeetCode login session from local browser.
 It also cleans LeetCode cookies in `url-cookie-file'."
   (leetcode--loading-mode t)
   (ignore-errors (url-cookie-delete-cookies leetcode--domain))
   (aio-await (leetcode--csrf-token))    ;knock knock, whisper me the mysterious information
-;;  (let* ((my-cookies (executable-find "my_cookies"))
-;;         (my-cookies-output (shell-command-to-string my-cookies))
-;;         (cookies-list (seq-filter
-;;                        (lambda (s) (not (string-empty-p s)))
-;;                        (split-string my-cookies-output "\n")))
-;;         (cookies-pairs (seq-map
-;;                         (lambda (s) (split-string s))
-;;                         cookies-list))
-;;         (leetcode-session (cadr (assoc "LEETCODE_SESSION" cookies-pairs)))
-;;         (leetcode-csrftoken (cadr (assoc "csrftoken" cookies-pairs))))
+  ;;(let* ((my-cookies (executable-find "my_cookies"))
+  ;;       (my-cookies-output (shell-command-to-string my-cookies))
+  ;;       (cookies-list (seq-filter
+  ;;                    (lambda (s) (not (string-empty-p s)))
+  ;;                      (split-string my-cookies-output "\n")))
+  ;;       (cookies-pairs (seq-map
+  ;;                       (lambda (s) (split-string s))
+  ;;                       cookies-list))
+  ;;       (leetcode-session (cadr (assoc "LEETCODE_SESSION" cookies-pairs)))
+  ;;       (leetcode-csrftoken (cadr (assoc "csrftoken" cookies-pairs))))
     (leetcode--debug "login session: %s" leetcode-session)
     (leetcode--debug "login csrftoken: %s" leetcode-csrftoken)
     (url-cookie-store "LEETCODE_SESSION" leetcode-session nil leetcode--domain "/" t)
-    (url-cookie-store "csrftoken" leetcode-csrftoken nil leetcode--domain "/" t))
-(leetcode--loading-mode -1)
-;;)
+    (url-cookie-store "csrftoken" leetcode-csrftoken nil leetcode--domain "/" t)
+  ;;  )
+  (leetcode--loading-mode -1))
 
 (defun leetcode--login-p ()
   "Whether user is login."
@@ -351,6 +351,7 @@ USER-AND-PROBLEMS is an alist comes from
 (defun leetcode--slugify-title (title)
   "Make TITLE a slug title.
 Such as 'Two Sum' will be converted to 'two-sum'."
+  (leetcode--debug "slugify-title with title: %s" title)
   (let* ((str1 (replace-regexp-in-string "\s+" "-" (downcase title)))
          (res (replace-regexp-in-string "[(),]" "" str1)))
     res))
@@ -371,6 +372,7 @@ OPERATION and VARS are LeetCode GraphQL parameters."
             likes
             dislikes
             content
+            translatedContent
             sampleTestCase
             (topicTags slug)
             (codeSnippets langSlug code)))))
@@ -383,6 +385,7 @@ Return a object with following attributes:
 :likes     Number
 :dislikes  Number
 :content   String
+:translatedContent String
 :topicTags String"
   (let* ((slug-title (leetcode--slugify-title title))
          (url-request-method "POST")
@@ -925,18 +928,19 @@ will show the description in other window and jump to it."
          (difficulty (leetcode--stringify-difficulty difficulty-level))
          (buf-name leetcode--description-buffer-name)
          (html-margin "&nbsp;&nbsp;&nbsp;&nbsp;"))
-    (leetcode--debug "select title: %s" title)
+    (leetcode--debug "select title: %s id: %s translatedContent " title problem-id )
     (let-alist problem
       (when (get-buffer buf-name)
         (kill-buffer buf-name))
       (with-temp-buffer
-        (insert (concat "<h1>" (number-to-string problem-id) ". " title "</h1>"))
+        (insert (concat "<h1>" problem-id ". " title "</h1>"))
         (insert (concat (capitalize difficulty) html-margin
                         "likes: " (number-to-string .likes) html-margin
                         "dislikes: " (number-to-string .dislikes)))
-        (insert .content)
+        ;;(insert .content)
+        (insert .translatedContent)
         (setq shr-current-font t)
-        (leetcode--replace-in-buffer "" "")
+        (leetcode--replace-in-buffer "^M" "")
         ;; NOTE: shr.el can't render "https://xxxx.png", so we use "http"
         (leetcode--replace-in-buffer "https" "http")
         (shr-render-buffer (current-buffer)))
@@ -962,7 +966,8 @@ will show the description in other window and jump to it."
 Get problem by id and use `shr-render-buffer' to render problem
 description.  This action will show the description in other
 window and jump to it."
-  (interactive (list (read-number "Show problem by problem id: "
+  ;;(interactive (list (read-number "Show problem by problem id: "
+  (interactive (list (read-string "Show problem by problem id: "
                                   (leetcode--get-current-problem-id))))
   (let* ((problem-info (leetcode--get-problem-by-id problem-id))
          (title (plist-get problem-info :title))
@@ -1010,7 +1015,8 @@ Call `leetcode-show-problem-in-browser' on the current problem id."
 
 (aio-defun leetcode-solve-problem (problem-id)
   "Start coding the problem with id PROBLEM-ID."
-  (interactive (list (read-number "Solve the problem with id: "
+  ;;(interactive (list (read-number "Solve the problem with id: "
+  (interactive (list (read-string "Solve the problem with id: "
                                   (leetcode--get-current-problem-id))))
   (let* ((problem-info (leetcode--get-problem-by-id problem-id))
          (title (plist-get problem-info :title))
@@ -1094,13 +1100,15 @@ python3, ruby, rust, scala, swift, mysql, mssql, oraclesql.")
 
 (defun leetcode--get-code-buffer-name (title)
   "Get code buffer name by TITLE and `leetcode-prefer-language'."
+  (leetcode--debug "get-code-buffer-name with title: %s" title)
   (let* ((suffix (assoc-default
                   leetcode--lang
                   leetcode--lang-suffixes))
          (slug-title (leetcode--slugify-title title))
          (title-with-suffix (concat slug-title suffix)))
     (if leetcode-save-solutions
-        (format "%04d_%s" (leetcode--get-problem-id slug-title) title-with-suffix)
+        ;(format "%04d_%s" (leetcode--get-problem-id slug-title) title-with-suffix)
+        (format "%s_%s" (leetcode--get-problem-id slug-title) title-with-suffix)
       title-with-suffix)))
 
 (defun leetcode--get-code-buffer (buf-name)
@@ -1134,16 +1142,19 @@ python3, ruby, rust, scala, swift, mysql, mssql, oraclesql.")
 
 (defun leetcode--get-current-problem-id ()
   "Get id of the current problem."
-  (string-to-number (aref (tabulated-list-get-entry) 1)))
+  ;;(string-to-number (aref (tabulated-list-get-entry) 1)))
+  (aref (tabulated-list-get-entry) 1))
 
 (defun leetcode--start-coding (problem problem-info)
   "Create a buffer for coding PROBLEM with meta-data PROBLEM-INFO.
 The buffer will be not associated with any file.  It will choose
 major mode by `leetcode-prefer-language'and `auto-mode-alist'."
+  (leetcode--debug "start-coding called begin")
   (let-alist problem
     (let* ((title (plist-get problem-info :title))
            (snippets (append .codeSnippets nil))
            (testcase .sampleTestCase))
+      (leetcode--debug "start-coding title:%s snippets:%s testcase:%s " title snippets testcase)
       (add-to-list 'leetcode--problem-titles title)
       (leetcode--solving-layout)
       (leetcode--set-lang snippets)
@@ -1153,6 +1164,7 @@ major mode by `leetcode-prefer-language'and `auto-mode-alist'."
              (suffix (assoc-default
                       leetcode--lang
                       leetcode--lang-suffixes)))
+        (leetcode--debug "start-coding with slug-title: %s buf-name: %s" slug-title buf-name)
         (unless code-buf
           (with-current-buffer (leetcode--get-code-buffer buf-name)
             (setq code-buf (current-buffer))
@@ -1166,7 +1178,7 @@ major mode by `leetcode-prefer-language'and `auto-mode-alist'."
                         (goto-char (point-min))
                         (search-forward (string-trim template-code) nil t))
                 (insert template-code))
-              (leetcode--replace-in-buffer "" ""))))
+              (leetcode--replace-in-buffer "^M" ""))))
 
         (display-buffer code-buf
                         '((display-buffer-reuse-window
